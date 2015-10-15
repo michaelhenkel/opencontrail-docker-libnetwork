@@ -37,7 +37,8 @@ IPAM support is not implemented yet so Docker will manage IP address assignment.
 
 1. Creating a network:  
  ```
- root@docker-exp:~# docker network create -d opencontrail --label rt=64512:100,64512:200 --subnet 192.168.4.0/24 net4
+ root@docker-exp:~# docker network create -d opencontrail \  
+                    --label rt=64512:100,64512:200 --subnet 192.168.4.0/24 net4
  598c2b9b19dc31bfca2da8f17704363f4701dca8e033f60ff122ee1d23f2acc4
  ```
 2. Inspect the network:  
