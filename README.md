@@ -1,7 +1,7 @@
 # opencontrail-docker-libnetwork
 The OpenContrail docker libnetwork remote plugin allows to use OpenContrail as a SDN  
 backend for Docker container.  
-Multihost is supported as well as specifying a route target for the created network.
+Multihost is supported as well as specifying a route target for the created network.  
 Usage of the driver:  
 ```
 usage: opencontrail-libnetwork-driver.py [-h] [-f FILE] [-u ADMIN_USER]
