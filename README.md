@@ -35,14 +35,14 @@ optional arguments:
 
 IPAM support is not implemented yet so Docker will manage IP address assignment.
 
-1. Creating a network:
+1. Creating a network:  
 
 ```
 root@docker-exp:~# docker network create -d opencontrail --label rt=64512:100,64512:200 --subnet 192.168.4.0/24 net4
 598c2b9b19dc31bfca2da8f17704363f4701dca8e033f60ff122ee1d23f2acc4
 ```
 
-2. Inspect the network:
+2. Inspect the network:  
 
 ```
 root@docker-exp:~# docker network inspect net4
@@ -67,7 +67,7 @@ root@docker-exp:~# docker network inspect net4
 }
 ```
 
-3. The network in OpenContrail:
+3. The network in OpenContrail:  
 
 ```
 root@docker-exp:~/orch# ./config show network 598c2b9b19dc31bfca2da8f17704363f4701dca8e033f60ff122ee1d23f2acc4
@@ -85,14 +85,14 @@ UUID: 63440d42-9578-4734-90e5-18ebb56a115b
 [R] Route Tables:
 ```
 
-4. creating a Container connected to the network:
+4. creating a Container connected to the network:  
 
 ```
 root@docker-exp:~# docker run -itd --name ub6 --net net4 ubuntu:latest
 5c842980d30c185facecbadf17d52f14d7b4c934be1c1134ea740be1d03f8a10
 ```
 
-5. Inspecting the network with the Container attached:
+5. Inspecting the network with the Container attached:  
 
 ```
 root@docker-exp:~# docker network inspect net4
@@ -124,7 +124,7 @@ root@docker-exp:~# docker network inspect net4
 }
 ```
 
-6. created VIF interface on the host:
+6. created VIF interface on the host:  
 
 ```
 root@docker-exp:~/orch# vif --list
