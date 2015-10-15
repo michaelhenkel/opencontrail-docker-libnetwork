@@ -70,17 +70,6 @@ root@docker-exp:~# docker network inspect net4
 3. The network in OpenContrail:
 
 ```
-root@docker-exp:~/orch# ./config show network net4
-Virtual Network
-Name: [u'default-domain', u'admin', u'net4']
-UUID: c8cd162e-1ff3-4165-ac88-8276018e3027
-[P] Route targets:
-[C] Floating IP pools:
-[R] IPAMs:
-    default-network-ipam
-        subnet: 4.4.4.0/24, gateway: 4.4.4.1
-[R] Policies:
-[R] Route Tables:
 root@docker-exp:~/orch# ./config show network 598c2b9b19dc31bfca2da8f17704363f4701dca8e033f60ff122ee1d23f2acc4
 Virtual Network
 Name: [u'default-domain', u'admin', u'598c2b9b19dc31bfca2da8f17704363f4701dca8e033f60ff122ee1d23f2acc4']
@@ -103,7 +92,39 @@ root@docker-exp:~# docker run -itd --name ub6 --net net4 ubuntu:latest
 5c842980d30c185facecbadf17d52f14d7b4c934be1c1134ea740be1d03f8a10
 ```
 
-5. created VIF interface on the host:
+5. Inspecting the network with the Container attached:
+
+```
+root@docker-exp:~# docker network inspect net4
+{
+    "name": "net4",
+    "id": "598c2b9b19dc31bfca2da8f17704363f4701dca8e033f60ff122ee1d23f2acc4",
+    "scope": "local",
+    "driver": "opencontrail",
+    "ipam_driver": "default",
+    "ipam": [
+        {
+            "subnet": "192.168.4.0/24",
+            "ip_range": "",
+            "gateway": "",
+            "auxilary_address": {}
+        }
+    ],
+    "containers": {
+        "5c842980d30c185facecbadf17d52f14d7b4c934be1c1134ea740be1d03f8a10": {
+            "endpoint": "a4cda3d9f8197da6b5458c941fbe7417c600b834ae64dedb41483898350414ee",
+            "mac_address": "",
+            "ipv4_address": "192.168.4.5/24",
+            "ipv6_address": ""
+        }
+    },
+    "labels": {
+        "rt": "64512:100,64512:200"
+    }
+}
+```
+
+6. created VIF interface on the host:
 
 ```
 root@docker-exp:~/orch# vif --list
