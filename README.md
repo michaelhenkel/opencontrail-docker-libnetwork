@@ -35,15 +35,38 @@ optional arguments:
                         Debug switch
 ```
 
+The driver can also be started using a configuration file  
+
+```
+host1:~# cat opencontrail.conf
+---
+api_server: vip
+api_port: '8082'
+admin_user: admin
+admin_password: password
+admin_tenant: admin
+socketpath: /run/docker/plugins
+scope: global
+DEBUG: true
+```
+
 IPAM support is not implemented yet so Docker will manage IP address assignment.
 
-1. Creating a network:  
- ```
- host1:~# docker network create -d opencontrail \   
+1. The driver should be started before the docker daemon:
+
+  ```
+  host1:~# opencontrail-libnetwork-driver.py -f opencontrail.conf
+
+
+2. Creating a network:  
+
+  ```
+  host1:~# docker network create -d opencontrail \   
                --label rt=64512:100,64512:200 --subnet 192.168.4.0/24 net4
- 598c2b9b19dc31bfca2da8f17704363f4701dca8e033f60ff122ee1d23f2acc4
- ```
-2. Inspect the network:  
+  598c2b9b19dc31bfca2da8f17704363f4701dca8e033f60ff122ee1d23f2acc4
+  ```
+
+3. Inspect the network:  
 
   ```
   host1:~# docker network inspect net4
@@ -68,7 +91,7 @@ IPAM support is not implemented yet so Docker will manage IP address assignment.
   }
   ```
 
-3. The network in OpenContrail:  
+4. The network in OpenContrail:  
 
   ```
   host1:~# ./config show network \  
@@ -87,14 +110,14 @@ IPAM support is not implemented yet so Docker will manage IP address assignment.
   [R] Route Tables:
   ```
 
-4. creating a Container connected to the network:  
+5. creating a Container connected to the network:  
 
   ```
   host1:~# docker run -itd --name ub6 --net net4 ubuntu:latest
   5c842980d30c185facecbadf17d52f14d7b4c934be1c1134ea740be1d03f8a10
   ```
 
-5. Inspecting the network with the Container attached:  
+6. Inspecting the network with the Container attached:  
 
   ```
   root@docker-exp:~# docker network inspect net4
@@ -126,7 +149,7 @@ IPAM support is not implemented yet so Docker will manage IP address assignment.
   }
   ```
 
-6. created VIF interface on the host:  
+7. created VIF interface on the host:  
 
   ```
   host1:~# vif --list
