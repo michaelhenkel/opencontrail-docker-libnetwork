@@ -172,3 +172,91 @@ IPAM support is not implemented yet so Docker will manage IP address assignment.
             TX packets:0  bytes:0 errors:0
   ```
 
+#Multihost
+
+Libnetwork supports multi-host networking. In order to distribute network information a datastore is needed.  
+Consul, etcd and zookeeper are supported datastore backends. 
+
+1. Install consul
+
+  ```
+  host1:~# curl -OL https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
+  host1:~# unzip 0.5.2_linux_amd64.zip
+  host1:~# mv consul /usr/local/bin/
+  ```
+
+2. Bootstrap consul
+
+  ```
+  host1:~# consul agent -server -bootstrap -data-dir /tmp/consul -bind=<IP> -client=<IP>
+  ```
+
+3. Start opencontrail libnetwork remote driver on host1 and host2
+  
+  ```
+  host1:~# opencontrail-libnetwork-driver.py -f opencontrail.conf
+  host2:~# opencontrail-libnetwork-driver.py -f opencontrail.conf
+  ```
+
+4. Start docker daemon on host1
+
+  ```
+  host1:~# docker daemon -H <HOST1_IP>:2376 -H unix:///var/run/docker.sock \  
+                    --cluster-store=consul://<CONSUL_IP>:8500 \  
+                    --cluster-advertise=<HOST1_IP>:2376
+  ```
+
+5. Start docker daemon on host2
+  ```
+  host2:~# docker daemon -H <HOST2_IP>:2376 -H unix:///var/run/docker.sock \  
+                    --cluster-store=consul://<CONSUL_IP>:8500 \  
+                    --cluster-advertise=<HOST2_IP>:2376
+  ```
+
+6. create a network on host1 OR host2
+
+  ```
+  host1:~# docker network create -d opencontrail \  
+         --subnet 192.168.10.0/24 \  
+         --subnet 2002:1::0/64 \  
+         --label rt=64512:100 net2
+  ```
+
+7. on the other host the network will become available
+
+  ```
+  host2:~# docker network ls
+  NETWORK ID          NAME                DRIVER
+  9d699b6a6d38        net2                opencontrail
+  d4c99652c9e3        bridge              bridge
+  6555b914a082        none                null
+  a43b74f6c0cd        host                host
+  ```
+
+8. run a container on each of the hosts using the same network
+  ```
+  host1:~# docker run -itd --name ub1 --net net2 ubuntu:latest
+  host2:~# docker run -itd --name ub2 --net net2 ubuntu:latest
+  ```
+
+9. check IP address assigned to the containers
+  ```
+  host1:~# docker inspect --format='{{.NetworkSettings.IPAddress}}' ub1
+  192.168.11.2
+
+  host2:~# docker inspect --format='{{.NetworkSettings.IPAddress}}' ub2
+  192.168.11.3
+  ```
+
+10. ping between the containers
+
+  ```
+  host1:~# docker exec ub1 ping 192.168.11.3
+  PING 192.168.11.3 (192.168.11.3) 56(84) bytes of data.
+  64 bytes from 192.168.11.3: icmp_seq=1 ttl=64 time=77.8 ms
+  64 bytes from 192.168.11.3: icmp_seq=2 ttl=64 time=24.1 ms
+  ```
+
+  
+
+
