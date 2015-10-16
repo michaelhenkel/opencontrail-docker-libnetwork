@@ -234,25 +234,19 @@ class RequestResponse(object):
         self.scope = ''
 
     def execRequest(self, action, data):
-
-        if action == 'NetworkDriver.DiscoverNew':
-            return HttpResponse(200,'json',{ }).response
-
-        if action == 'NetworkDriver.DiscoverDelete':
-            return HttpResponse(200,'json',{ }).response
         
         if action == 'Plugin.Activate':
             return HttpResponse(200,'json',{ 'Implements': ['NetworkDriver','IPAM'] }).response
 
         if action == 'NetworkDriver.GetCapabilities':
-            return HttpResponse(200,'json',{ 'Scope':scope}).response
+            return HttpResponse(200,'json',{ 'Scope':'local'}).response
 
         if action == 'IPAM.GetDefaultAddressSpaces':
             requestPool = {}
             return HttpResponse(200,'json',requestPool).response
 
         if action == 'NetworkDriver.CreateNetwork':
-            networkId = data['NetworkID'][:8]
+            networkId = data['NetworkID']
             pool = data['IPv4Data'][0]['Pool']
             gateway = data['IPv4Data'][0]['Gateway'].split('/')[0]
             if len(data['IPv6Data']) > 0:
@@ -270,16 +264,16 @@ class RequestResponse(object):
                 else:
                     openContrailVN = OpenContrailVN(networkId).create(pool, gateway)
             networkInfo = {}
-            networkInfo['NetworkID'] = data['NetworkID']
+            networkInfo['NetworkID'] = networkId
             return HttpResponse(200,'json',networkInfo).response
 
         if action == 'NetworkDriver.DeleteNetwork':
-            networkId = data['NetworkID'][:8]
+            networkId = data['NetworkID']
             openContrailVN = OpenContrailVN(networkId).delete()
             return HttpResponse(200,'json',{ }).response
 
         if action == 'NetworkDriver.CreateEndpoint':
-            networkId = data['NetworkID'][:8]
+            networkId = data['NetworkID']
             endpointId = data['EndpointID']
             hostId = endpointId[:8]
             ipAddress = data['Interface']['Address']
@@ -296,7 +290,7 @@ class RequestResponse(object):
             endpointId = data['EndpointID']
             hostId = endpointId[:8]
             OpenContrailVirtualMachineInterface(hostId).delete()
-            vethIdHost = 'veth' + hostId + 'p0'
+            vethIdHost = 'veth' + endpointId[:8] + 'p0'
             ip = IPDB()
             with ip.interfaces[vethIdHost] as veth:
                 veth.remove()
@@ -309,7 +303,7 @@ class RequestResponse(object):
             return HttpResponse(200,'json',endpointInfo).response
 
         if action == 'NetworkDriver.Join':
-            networkId = data['NetworkID'][:8]
+            networkId = data['NetworkID']
             endpointId = data['EndpointID']
             hostId = endpointId[:8]
             vethIdHost = 'veth' + hostId + 'p0'
@@ -382,8 +376,6 @@ parser.add_argument('-y','--tenant',
                    help='Project')
 parser.add_argument('-s','--socketpath',default='/run/docker/plugins',
                    help='Project')
-parser.add_argument('-g','--scope',
-                   help='local or global scope')
 parser.add_argument('-d','--debug',default=False,
                    help='Debug switch')
 
@@ -394,7 +386,6 @@ admin_password=''
 api_server=''
 api_port=''
 socket_path=''
-scope=''
 debug = False
 
 if args.file:
@@ -407,7 +398,6 @@ if args.file:
     admin_password = configYaml['admin_password']
     tenant = configYaml['admin_tenant']
     socket_path = configYaml['socketpath']
-    scope = configYaml['scope']
     debug = configYaml['DEBUG']
 
 if args.admin_user:
@@ -428,14 +418,8 @@ if args.api_port:
 if args.socketpath:
     socket_path = args.socketpath
 
-if args.scope:
-    scope = args.scope
-
 if args.debug:
     debug = args.debug
-
-if not scope:
-    scope = 'local'
 
 if debug:
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
