@@ -9,6 +9,7 @@ import argparse
 import yaml
 import uuid
 import logging
+from netaddr import *
 from pprint import pprint
 from vnc_api import vnc_api
 from contrail_vrouter_api.vrouter_api import ContrailVRouterApi
@@ -79,13 +80,17 @@ class OpenContrailVN(OpenContrail):
         subnet = vnc_api.SubnetType(ip_prefix = cidr[0],
                 ip_prefix_len = int(cidr[1]))
 
+        v4DnsServer = IPNetwork(v4subnet)[-2]
+
         if v4gateway:
             ipam_subnet = vnc_api.IpamSubnetType(subnet = subnet,
                 default_gateway = v4gateway)
         else:
-            ipam_subnet = vnc_api.IpamSubnetType(subnet = subnet)
+            ipam_subnet = vnc_api.IpamSubnetType(subnet = subnet, 
+                                        dns_server_address = v4DnsServer)
 
         if v6subnet:
+            v6DnsServer = IPNetwork(v6subnet)[-2]
             v6cidr = v6subnet.split('/')
             v6subnet = vnc_api.SubnetType(ip_prefix = v6cidr[0],
                  ip_prefix_len = int(v6cidr[1]))
@@ -94,7 +99,8 @@ class OpenContrailVN(OpenContrail):
                 ipam_v6subnet = vnc_api.IpamSubnetType(subnet = v6subnet,
                     default_gateway = v6gateway)
             else:
-                ipam_v6subnet = vnc_api.IpamSubnetType(subnet = v6subnet)
+                ipam_v6subnet = vnc_api.IpamSubnetType(subnet = v6subnet, 
+                                dns_server_address = v6DnsServer)
             self.obj.add_network_ipam(ref_obj = ipam_obj,
                    ref_data = vnc_api.VnSubnetsType([ipam_subnet,ipam_v6subnet]))
         else:
@@ -172,6 +178,11 @@ class OpenContrailVirtualMachineInterface(OpenContrail):
         try:
             vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name=[self.vmName, interfaceName])
             if vm_interface:
+                ip_list = vm_interface.get_instance_ip_back_refs()
+                if ip_list:
+                    for ip in ip_list:
+                        ip_obj = self.vnc_client.instance_ip_read(id = ip['uuid'])
+                        self.vnc_client.instance_ip_delete(id = ip_obj.uuid)
                 ContrailVRouterApi().delete_port(vm_interface.uuid)
                 self.vnc_client.virtual_machine_interface_delete(id=vm_interface.uuid)
         except:
@@ -192,29 +203,27 @@ class OpenContrailVirtualMachineInterface(OpenContrail):
         vm_interface.set_virtual_network(vn)
         self.vnc_client.virtual_machine_interface_create(vm_interface)
         vm_interface = self.vnc_client.virtual_machine_interface_read(id = vm_interface.uuid)
-
-        ip = vnc_api.InstanceIp(name = interfaceName, instance_ip_address = ipAddress.split('/')[0])
+        ipuuid = str(uuid.uuid4())
+        ip = vnc_api.InstanceIp(name = ipuuid, instance_ip_address = ipAddress.split('/')[0])
         ip.set_virtual_machine_interface(vm_interface)
         ip.set_virtual_network(vn)
         self.vnc_client.instance_ip_create(ip)
 
-        if ipv6Address:
-            ipv6 = vnc_api.InstanceIp(name = interfaceName, instance_ip_address = ipv6Address.split('/')[0])
-            ipv6.set_virtual_machine_interface(vm_interface)
-            ipv6.set_virtual_network(vn)
-            self.vnc_client.instance_ip_update(ipv6)
-
-        '''
-        ip = self.vnc_client.instance_ip_read(id = ip.uuid)
-        ipAddress = ip.get_instance_ip_address()
-        subnet = vn.network_ipam_refs[0]['attr'].ipam_subnets[0]
-        plen = subnet.get_subnet().get_ip_prefix_len()
-        gw = subnet.default_gateway
-        '''
-
         mac = vm_interface.virtual_machine_interface_mac_addresses.mac_address[0]
         vrouterInterface = interfaceName + 'p0'
-        ContrailVRouterApi().add_port(vm_instance.uuid, vm_interface.uuid, vrouterInterface, mac, display_name=vm_instance.name,
+
+        if ipv6Address:
+            ipv6uuid = str(uuid.uuid4())
+            ipv6 = vnc_api.InstanceIp(name = ipv6uuid, instance_ip_address = ipv6Address.split('/')[0])
+            ipv6.set_instance_ip_family('v6')
+            ipv6.uuid = ipv6uuid
+            ipv6.set_virtual_machine_interface(vm_interface)
+            ipv6.set_virtual_network(vn)
+            self.vnc_client.instance_ip_create(ipv6)
+            ContrailVRouterApi().add_port(vm_instance.uuid, vm_interface.uuid, vrouterInterface, mac, display_name=vm_instance.name,
+                 vm_project_id=self.tenant.uuid, port_type='NovaVMPort', ip6_address = ipv6Address.split('/')[0])
+        else:
+            ContrailVRouterApi().add_port(vm_instance.uuid, vm_interface.uuid, vrouterInterface, mac, display_name=vm_instance.name,
                  vm_project_id=self.tenant.uuid, port_type='NovaVMPort')
 
 class HttpResponse(object):
