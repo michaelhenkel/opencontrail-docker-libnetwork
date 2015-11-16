@@ -13,7 +13,6 @@ from netaddr import *
 from pprint import pprint
 from vnc_api import vnc_api
 from contrail_vrouter_api.vrouter_api import ContrailVRouterApi
-from opencontrail_vrouter_netns import vrouter_control
 from pyroute2 import IPDB
 from uhttplib import UnixHTTPConnection
 from BaseHTTPServer import BaseHTTPRequestHandler,HTTPServer
@@ -43,7 +42,8 @@ class OpenContrail(object):
             password = admin_password,
             tenant_name = tenant,
             api_server_host=api_server,
-            api_server_port=api_port)
+            api_server_port=api_port,
+            auth_host=keystone_server)
         return vnc_client
 
 '''
@@ -385,6 +385,8 @@ parser.add_argument('-p','--admin_password',
                    help='Admin password for Contrail API Server')
 parser.add_argument('-a','--api_server',
                    help='Contrail API Server IP/FQDN')
+parser.add_argument('-k','--keystone_server',
+                   help='Keystone Server IP/FQDN')
 parser.add_argument('-x','--api_port',default='8082',
                    help='Contrail API Server port')
 parser.add_argument('-y','--tenant',
@@ -404,6 +406,7 @@ api_server=''
 api_port=''
 socket_path=''
 scope=''
+keystone_server=''
 debug = False
 
 if args.file:
@@ -415,6 +418,7 @@ if args.file:
     admin_user = configYaml['admin_user']
     admin_password = configYaml['admin_password']
     tenant = configYaml['admin_tenant']
+    keystone_server = configYaml['keystone_server']
     socket_path = configYaml['socketpath']
     scope = configYaml['scope']
     debug = configYaml['DEBUG']
@@ -430,6 +434,9 @@ if args.admin_password:
 
 if args.api_server:
     api_server = args.api_server
+
+if args.keystone_server:
+    keystone_server = args.keystone_server
 
 if args.api_port:
     api_port = args.api_port
@@ -454,6 +461,7 @@ else:
 if (not admin_user or not tenant 
                   or not admin_password
                   or not api_server
+                  or not keystone_server
                   or not api_port
                   or not socket_path):
    print parser.print_help()
