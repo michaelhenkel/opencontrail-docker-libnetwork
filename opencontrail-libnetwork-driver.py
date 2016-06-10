@@ -328,7 +328,10 @@ class RequestResponse(object):
             gateway = subnet.default_gateway
             mac = OpenContrailVirtualMachineInterface(hostId).getMac()
             ip = IPDB()
-            ip.create(ifname=vethIdHost, kind='veth', peer=vethIdContainer).commit()
+            if mode == 'macvlan':
+                ip.create(ifname=vethIdHost, kind='macvlan', link=ip.interfaces[mvInt]['index'],macvlan_mode="private").commit()
+            if mode == 'veth':
+                ip.create(ifname=vethIdHost, kind='veth', peer=vethIdContainer).commit()
             with ip.interfaces[vethIdHost] as veth:
                 veth.up()
             with ip.interfaces[vethIdContainer] as veth:
@@ -403,6 +406,10 @@ parser.add_argument('-s','--socketpath',default='/run/docker/plugins',
                    help='Project')
 parser.add_argument('-g','--scope',
                    help='local or global scope')
+parser.add_argument('-m','--mode',default='veth',
+                   help='macvlan/veth')
+parser.add_argument('-i','--mvint',
+                   help='macvlan host interface')
 parser.add_argument('-d','--debug',default=False,
                    help='Debug switch')
 
@@ -429,6 +436,8 @@ if args.file:
     keystone_server = configYaml['keystone_server']
     socket_path = configYaml['socketpath']
     scope = configYaml['scope']
+    mode = configYaml['mode']
+    mvint = configYaml['mvint']
     debug = configYaml['DEBUG']
 
 if args.admin_user:
@@ -458,8 +467,17 @@ if args.scope:
 if args.debug:
     debug = args.debug
 
+if args.mode:
+    mode = args.mode
+
+if args.mvint:
+    mvint = args.mvint
+
 if not scope:
     scope = 'local'
+
+if not mode:
+    mode = 'veth'
 
 if debug:
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
