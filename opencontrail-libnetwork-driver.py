@@ -84,10 +84,10 @@ class OpenContrailVN(OpenContrail):
 
         if v4gateway:
             ipam_subnet = vnc_api.IpamSubnetType(subnet = subnet,
-                default_gateway = v4gateway)
+                default_gateway = v4gateway, enable_dhcp = False)
         else:
             ipam_subnet = vnc_api.IpamSubnetType(subnet = subnet, 
-                                        dns_server_address = v4DnsServer)
+                                        dns_server_address = v4DnsServer, enable_dhcp = False)
 
         if v6subnet:
             v6DnsServer = IPNetwork(v6subnet)[-2]
@@ -340,6 +340,12 @@ class RequestResponse(object):
             joinInfo['Gateway'] = gateway
             joinInfo['StaticRoutes'] = []
             return HttpResponse(200,'json',joinInfo).response
+ 
+        if action == 'NetworkDriver.ProgramExternalConnectivity':
+            return HttpResponse(200,'json',{ }).response
+
+        if action == 'NetworkDriver.RevokeExternalConnectivity':
+            return HttpResponse(200,'json',{ }).response
 
         if action == 'NetworkDriver.Leave':
             return HttpResponse(200,'json',{ }).response
@@ -359,8 +365,10 @@ class Handler(BaseHTTPRequestHandler):
         return
 
     def do_POST(self):
+        data = ''
         self.data_string = self.rfile.read(int(self.headers['Content-Length']))
-        data = json.loads(self.data_string)
+        if self.data_string != '':
+            data = json.loads(self.data_string)
         logging.debug('path: %s' % self.path)
         logging.debug('data: %s' % data)
         result = requestResponse.execRequest(self.path.strip('/'), data)
