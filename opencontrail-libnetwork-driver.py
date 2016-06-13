@@ -327,15 +327,20 @@ class RequestResponse(object):
             subnet = vn.network_ipam_refs[0]['attr'].ipam_subnets[0]
             gateway = subnet.default_gateway
             mac = OpenContrailVirtualMachineInterface(hostId).getMac()
+            logging.debug('MODE: %s' %mode)
             ip = IPDB()
+            logging.debug('ifname: %s, mvint: %s' %(vethIdHost, mvint))
             if mode == 'macvlan':
-                ip.create(ifname=vethIdHost, kind='macvlan', link=ip.interfaces[mvInt]['index'],macvlan_mode="private").commit()
+                ip.create(ifname=vethIdHost, kind='macvlan', link=ip.interfaces[mvint]['index'],macvlan_mode="private").commit()
+                with ip.interfaces[vethIdHost] as veth:
+                    veth.address = mac
+                    veth.up()
             if mode == 'veth':
                 ip.create(ifname=vethIdHost, kind='veth', peer=vethIdContainer).commit()
-            with ip.interfaces[vethIdHost] as veth:
-                veth.up()
-            with ip.interfaces[vethIdContainer] as veth:
-                veth.address = mac
+                with ip.interfaces[vethIdHost] as veth:
+                    veth.up()
+                with ip.interfaces[vethIdContainer] as veth:
+                    veth.address = mac
             joinInfo = {}
             joinInfo['InterfaceName'] = {}
             joinInfo['InterfaceName']['SrcName'] = vethIdContainer
@@ -406,7 +411,7 @@ parser.add_argument('-s','--socketpath',default='/run/docker/plugins',
                    help='Project')
 parser.add_argument('-g','--scope',
                    help='local or global scope')
-parser.add_argument('-m','--mode',default='veth',
+parser.add_argument('-m','--mode',
                    help='macvlan/veth')
 parser.add_argument('-i','--mvint',
                    help='macvlan host interface')
@@ -483,6 +488,8 @@ if debug:
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 else:
     logging.basicConfig(stream=sys.stderr, level=logging.INFO)
+
+logging.debug("Config: %s" % args)
 
 if (not admin_user or not tenant 
                   or not admin_password
