@@ -160,10 +160,12 @@ class OpenContrailVirtualMachineInterface(OpenContrail):
         super(OpenContrailVirtualMachineInterface,self).__init__()
         self._vrouter_client = ContrailVRouterApi(doconnect=True)
         self.vmName = vmName
+        self.project = self.vnc_client.project_read(fq_name_str = 'default-domain:' + self.tenant.name)
 
     def getMac(self):
         interfaceName = 'veth' + self.vmName
-        vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name=[self.vmName, interfaceName])
+        vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name_str = 'default-domain:' + self.tenant.name + ':' + interfaceName)
+        #vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name=[self.vmName, interfaceName])
         mac = vm_interface.virtual_machine_interface_mac_addresses.mac_address[0]
         return mac
 
@@ -176,7 +178,8 @@ class OpenContrailVirtualMachineInterface(OpenContrail):
         except:
             logging.debug('no instance ip')
         try:
-            vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name=[self.vmName, interfaceName])
+            vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name_str = 'default-domain:' + self.tenant.name + ':' + interfaceName)
+            #vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name=[self.vmName, interfaceName])
             if vm_interface:
                 ip_list = vm_interface.get_instance_ip_back_refs()
                 if ip_list:
@@ -198,7 +201,8 @@ class OpenContrailVirtualMachineInterface(OpenContrail):
         interfaceName = 'veth' + self.vmName
         vm_instance = vnc_api.VirtualMachine(name = self.vmName)
         self.vnc_client.virtual_machine_create(vm_instance)
-        vm_interface = vnc_api.VirtualMachineInterface(name = interfaceName, parent_obj = vm_instance)
+        vm_interface = vnc_api.VirtualMachineInterface(name = interfaceName, parent_obj = self.project)
+        #vm_interface = vnc_api.VirtualMachineInterface(name = interfaceName, parent_obj = vm_instance)
         vn = OpenContrailVN(vnName).VNget()
         vm_interface.set_virtual_network(vn)
         self.vnc_client.virtual_machine_interface_create(vm_interface)
@@ -210,7 +214,10 @@ class OpenContrailVirtualMachineInterface(OpenContrail):
         self.vnc_client.instance_ip_create(ip)
 
         mac = vm_interface.virtual_machine_interface_mac_addresses.mac_address[0]
-        vrouterInterface = interfaceName + 'p0'
+        if mode == 'macvlan':
+            vrouterInterface = interfaceName
+        else:
+            vrouterInterface = interfaceName + 'p0'
 
         if ipv6Address:
             ipv6uuid = str(uuid.uuid4())
@@ -305,7 +312,10 @@ class RequestResponse(object):
             endpointId = data['EndpointID']
             hostId = endpointId[:8]
             OpenContrailVirtualMachineInterface(hostId).delete()
-            vethIdHost = 'veth' + hostId + 'p0'
+            if mode == 'macvlan':
+                vethIdHost = 'veth' + hostId
+            else:
+                vethIdHost = 'veth' + hostId + 'p0'
             ip = IPDB()
             with ip.interfaces[vethIdHost] as veth:
                 veth.remove()
@@ -329,10 +339,11 @@ class RequestResponse(object):
             mac = OpenContrailVirtualMachineInterface(hostId).getMac()
             logging.debug('MODE: %s' %mode)
             ip = IPDB()
-            logging.debug('ifname: %s, mvint: %s' %(vethIdHost, mvint))
+            logging.debug('ifname: %s, mvint: %s, mode: %s' %(vethIdHost, mvint,mode))
             if mode == 'macvlan':
-                ip.create(ifname=vethIdHost, kind='macvlan', link=ip.interfaces[mvint]['index'],macvlan_mode="private").commit()
-                with ip.interfaces[vethIdHost] as veth:
+                status = ip.create(ifname=vethIdContainer, kind='macvlan', link=ip.interfaces[mvint]['index'],macvlan_mode="bridge").commit()
+                logging.debug('Status: %s' % status)
+                with ip.interfaces[vethIdContainer] as veth:
                     veth.address = mac
                     veth.up()
             if mode == 'veth':
