@@ -160,12 +160,10 @@ class OpenContrailVirtualMachineInterface(OpenContrail):
         super(OpenContrailVirtualMachineInterface,self).__init__()
         self._vrouter_client = ContrailVRouterApi(doconnect=True)
         self.vmName = vmName
-        self.project = self.vnc_client.project_read(fq_name_str = 'default-domain:' + self.tenant.name)
 
     def getMac(self):
         interfaceName = 'veth' + self.vmName
-        vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name_str = 'default-domain:' + self.tenant.name + ':' + interfaceName)
-        #vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name=[self.vmName, interfaceName])
+        vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name=[self.vmName, interfaceName])
         mac = vm_interface.virtual_machine_interface_mac_addresses.mac_address[0]
         return mac
 
@@ -178,33 +176,57 @@ class OpenContrailVirtualMachineInterface(OpenContrail):
         except:
             logging.debug('no instance ip')
         try:
-            vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name_str = 'default-domain:' + self.tenant.name + ':' + interfaceName)
-            #vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name=[self.vmName, interfaceName])
+            vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name=[self.vmName, interfaceName])
             if vm_interface:
                 ip_list = vm_interface.get_instance_ip_back_refs()
+                try:
+		     vm_list = vm_interface.get_virtual_machine_refs()
+		     logging.debug("vm list: %s" % vm_list)
+                except:
+                     logging.debug("no vm_list")
                 if ip_list:
                     for ip in ip_list:
                         ip_obj = self.vnc_client.instance_ip_read(id = ip['uuid'])
                         self.vnc_client.instance_ip_delete(id = ip_obj.uuid)
                 ContrailVRouterApi().delete_port(vm_interface.uuid)
                 self.vnc_client.virtual_machine_interface_delete(id=vm_interface.uuid)
+		logging.debug("vm list: %s" % vm_list)
+                if vm_list:
+                    for vm in vm_list:
+                        vm_obj = self.vnc_client.virtual_machine_read(id = vm['uuid'])
+                        try:
+                            self.vnc_client.virtual_machine_delete(id = vm_obj.uuid)
+                        except:
+                            logging.debug('no vm')
         except:
             logging.debug('no vm interface')
+        #try:
+        #    vm = self.vnc_client.virtual_machine_read( fq_name_str = vm.uuid)
+        #    if vm:
+        #        self.vnc_client.virtual_machine_delete(id=vm.uuid)
+        #except:
+        #    logging.debug('no vm')
+
+    def createVirtualMachine(self,sandboxKey):
+	interfaceName = 'veth' + self.vmName
+	vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name=[self.vmName, interfaceName])
         try:
-            vm = self.vnc_client.virtual_machine_read( fq_name_str = self.vmName)
-            if vm:
-                self.vnc_client.virtual_machine_delete(id=vm.uuid)
+            vm_instance = self.vnc_client.virtual_machine_read(fq_name = [sandboxKey])
         except:
-            logging.debug('no vm')
+            vm_instance = vnc_api.VirtualMachine(name = sandboxKey)
+            self.vnc_client.virtual_machine_create(vm_instance)
+	vm_interface = self.vnc_client.virtual_machine_interface_read(id = vm_interface.uuid)
+	vm_interface.set_virtual_machine(vm_instance)
+        self.vnc_client.virtual_machine_interface_update(vm_interface)
 
     def create(self, vnName, ipAddress, ipv6Address=None):
         interfaceName = 'veth' + self.vmName
         vm_instance = vnc_api.VirtualMachine(name = self.vmName)
         self.vnc_client.virtual_machine_create(vm_instance)
-        vm_interface = vnc_api.VirtualMachineInterface(name = interfaceName, parent_obj = self.project)
-        #vm_interface = vnc_api.VirtualMachineInterface(name = interfaceName, parent_obj = vm_instance)
+        vm_interface = vnc_api.VirtualMachineInterface(name = interfaceName, parent_obj = vm_instance)
         vn = OpenContrailVN(vnName).VNget()
         vm_interface.set_virtual_network(vn)
+        vm_interface.set_virtual_machine(vm_instance)
         self.vnc_client.virtual_machine_interface_create(vm_interface)
         vm_interface = self.vnc_client.virtual_machine_interface_read(id = vm_interface.uuid)
         ipuuid = str(uuid.uuid4())
@@ -214,10 +236,7 @@ class OpenContrailVirtualMachineInterface(OpenContrail):
         self.vnc_client.instance_ip_create(ip)
 
         mac = vm_interface.virtual_machine_interface_mac_addresses.mac_address[0]
-        if mode == 'macvlan':
-            vrouterInterface = interfaceName
-        else:
-            vrouterInterface = interfaceName + 'p0'
+        vrouterInterface = interfaceName + 'p0'
 
         if ipv6Address:
             ipv6uuid = str(uuid.uuid4())
@@ -295,6 +314,9 @@ class RequestResponse(object):
             return HttpResponse(200,'json',{ }).response
 
         if action == 'NetworkDriver.CreateEndpoint':
+            logging.debug("###########################################################################")
+	    logging.debug(data)
+            logging.debug("###########################################################################")
             networkId = data['NetworkID'][:8]
             endpointId = data['EndpointID']
             hostId = endpointId[:8]
@@ -312,10 +334,7 @@ class RequestResponse(object):
             endpointId = data['EndpointID']
             hostId = endpointId[:8]
             OpenContrailVirtualMachineInterface(hostId).delete()
-            if mode == 'macvlan':
-                vethIdHost = 'veth' + hostId
-            else:
-                vethIdHost = 'veth' + hostId + 'p0'
+            vethIdHost = 'veth' + hostId + 'p0'
             ip = IPDB()
             with ip.interfaces[vethIdHost] as veth:
                 veth.remove()
@@ -330,6 +349,7 @@ class RequestResponse(object):
         if action == 'NetworkDriver.Join':
             networkId = data['NetworkID'][:8]
             endpointId = data['EndpointID']
+            sandboxKey = data['SandboxKey'].split("/")[5]
             hostId = endpointId[:8]
             vethIdHost = 'veth' + hostId + 'p0'
             vethIdContainer = 'veth' + hostId
@@ -337,21 +357,16 @@ class RequestResponse(object):
             subnet = vn.network_ipam_refs[0]['attr'].ipam_subnets[0]
             gateway = subnet.default_gateway
             mac = OpenContrailVirtualMachineInterface(hostId).getMac()
-            logging.debug('MODE: %s' %mode)
+            try:
+	        OpenContrailVirtualMachineInterface(hostId).createVirtualMachine(sandboxKey)
+            except:
+                logging.debug("VM already exists")
             ip = IPDB()
-            logging.debug('ifname: %s, mvint: %s, mode: %s' %(vethIdHost, mvint,mode))
-            if mode == 'macvlan':
-                status = ip.create(ifname=vethIdContainer, kind='macvlan', link=ip.interfaces[mvint]['index'],macvlan_mode="bridge").commit()
-                logging.debug('Status: %s' % status)
-                with ip.interfaces[vethIdContainer] as veth:
-                    veth.address = mac
-                    veth.up()
-            if mode == 'veth':
-                ip.create(ifname=vethIdHost, kind='veth', peer=vethIdContainer).commit()
-                with ip.interfaces[vethIdHost] as veth:
-                    veth.up()
-                with ip.interfaces[vethIdContainer] as veth:
-                    veth.address = mac
+            ip.create(ifname=vethIdHost, kind='veth', peer=vethIdContainer).commit()
+            with ip.interfaces[vethIdHost] as veth:
+                veth.up()
+            with ip.interfaces[vethIdContainer] as veth:
+                veth.address = mac
             joinInfo = {}
             joinInfo['InterfaceName'] = {}
             joinInfo['InterfaceName']['SrcName'] = vethIdContainer
@@ -422,10 +437,6 @@ parser.add_argument('-s','--socketpath',default='/run/docker/plugins',
                    help='Project')
 parser.add_argument('-g','--scope',
                    help='local or global scope')
-parser.add_argument('-m','--mode',
-                   help='macvlan/veth')
-parser.add_argument('-i','--mvint',
-                   help='macvlan host interface')
 parser.add_argument('-d','--debug',default=False,
                    help='Debug switch')
 
@@ -452,8 +463,6 @@ if args.file:
     keystone_server = configYaml['keystone_server']
     socket_path = configYaml['socketpath']
     scope = configYaml['scope']
-    mode = configYaml['mode']
-    mvint = configYaml['mvint']
     debug = configYaml['DEBUG']
 
 if args.admin_user:
@@ -483,24 +492,13 @@ if args.scope:
 if args.debug:
     debug = args.debug
 
-if args.mode:
-    mode = args.mode
-
-if args.mvint:
-    mvint = args.mvint
-
 if not scope:
     scope = 'local'
-
-if not mode:
-    mode = 'veth'
 
 if debug:
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 else:
     logging.basicConfig(stream=sys.stderr, level=logging.INFO)
-
-logging.debug("Config: %s" % args)
 
 if (not admin_user or not tenant 
                   or not admin_password
