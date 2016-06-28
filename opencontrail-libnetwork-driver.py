@@ -222,7 +222,7 @@ class OpenContrailEndpoint(OpenContrail):
         except:
             vmInstance = vnc_api.VirtualMachine(name = sandboxKey)
             self.vnc_client.virtual_machine_create(vmInstance)
-        vmInterface = vnc_api.VirtualMachineInterface(name = interfaceName, parent_obj = vmInstance)
+        vmInterface = vnc_api.VirtualMachineInterface(name = interfaceName, parent_obj = self.tenant)
 	vmInterface.set_virtual_machine(vmInstance)
 	vmInterface.set_virtual_network(vn)
         self.vnc_client.virtual_machine_interface_create(vmInterface)
