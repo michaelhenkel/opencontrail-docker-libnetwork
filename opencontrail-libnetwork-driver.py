@@ -69,7 +69,7 @@ class OpenContrailVN(OpenContrail):
                     (item['fq_name'][2] == self.vnName):
                 return self.vnc_client.virtual_network_read(id = item['uuid'])
 
-    def create(self, v4subnet, v4gateway, v6subnet=None, v6gateway=None, rtList=None):
+    def create(self, v4subnet, v4gateway, v6subnet=None, v6gateway=None, rtList=None, displayName=None):
         try:
             ipam_obj = self.vnc_client.network_ipam_read(fq_name = ['default-domain',
                                                   'default-project', 'default-network-ipam'])
@@ -112,6 +112,8 @@ class OpenContrailVN(OpenContrail):
             self.obj.set_route_target_list(rtObj)
             for rt in rtList:
                 rtObj.add_route_target('target:%s' %(rt))
+        if displayName:
+            self.obj.set_display_name(displayName)
         try:
             self.vnc_client.virtual_network_create(self.obj)
         except Exception as e:
@@ -282,20 +284,23 @@ class RequestResponse(object):
             networkId = data['NetworkID'][:8]
             pool = data['IPv4Data'][0]['Pool']
             gateway = data['IPv4Data'][0]['Gateway'].split('/')[0]
+            displayName = ''
             if len(data['IPv6Data']) > 0:
                 v6pool = data['IPv6Data'][0]['Pool']
                 v6gateway = data['IPv6Data'][0]['Gateway']
+            if 'name' in data['Options']['com.docker.network.generic']:
+                displayName = data['Options']['com.docker.network.generic']['name']
             if 'rt' in data['Options']['com.docker.network.generic']:
                 rtList = data['Options']['com.docker.network.generic']['rt'].split(',')
                 if len(data['IPv6Data']) > 0:
-                    openContrailVN = OpenContrailVN(networkId).create(pool, gateway, v6subnet=v6pool, v6gateway = v6gateway, rtList = rtList)
+                    openContrailVN = OpenContrailVN(networkId).create(pool, gateway, v6subnet=v6pool, v6gateway = v6gateway, rtList = rtList, displayName = displayName)
                 else:
-                    openContrailVN = OpenContrailVN(networkId).create(pool, gateway, rtList = rtList)
+                    openContrailVN = OpenContrailVN(networkId).create(pool, gateway, rtList = rtList, displayName = displayName)
             else:
                 if len(data['IPv6Data']) > 0:
-                    openContrailVN = OpenContrailVN(networkId).create(pool, gateway, v6subnet=v6pool, v6gateway = v6gateway)
+                    openContrailVN = OpenContrailVN(networkId).create(pool, gateway, v6subnet=v6pool, v6gateway = v6gateway, displayName = displayName)
                 else:
-                    openContrailVN = OpenContrailVN(networkId).create(pool, gateway)
+                    openContrailVN = OpenContrailVN(networkId).create(pool, gateway, displayName = displayName)
             networkInfo = {}
             networkInfo['NetworkID'] = data['NetworkID']
             return HttpResponse(200,'json',networkInfo).response
@@ -498,10 +503,13 @@ if (not admin_user or not tenant
 socket_address = socket_path + '/opencontrail.sock'
 
 if __name__ == "__main__":
-    print "Serving on %s" % socket_address
     requestResponse = RequestResponse()
     if not os.path.exists(socket_path):
         os.makedirs(socket_path)
+    if os.path.exists(socket_address):
+        logging.debug("%s already exists, removing it...." % socket_address)
+        os.remove(socket_address)
+    logging.debug("Serving on %s" % socket_address)
     httpd = UnixHTTPServer(socket_address, Handler)
     try:
         httpd.serve_forever()
