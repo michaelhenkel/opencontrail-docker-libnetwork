@@ -166,7 +166,7 @@ class OpenContrailEndpoint(OpenContrail):
         self.epUuid = uuid.UUID("{" + ep[0:8] + "-" + ep[8:12] + "-" + ep[12:16] + "-" + ep[16:20] + "-" + ep[20:32] + "}")
 
     def getMac(self):
-        interfaceName = 'veth' + self.epName
+        interfaceName = 'veth' + self.epName + 'p0'
         vm_interface = self.vnc_client.virtual_machine_interface_read(fq_name=['default-domain',self.tenant.name, interfaceName])
         mac = vm_interface.virtual_machine_interface_mac_addresses.mac_address[0]
         return mac
@@ -210,20 +210,34 @@ class OpenContrailEndpoint(OpenContrail):
                 if vmList:
                     logging.debug("%s"%vmList)
                     for vm in vmList:
-                        try:
-                            self.vnc_client.virtual_machine_delete(id = vm['uuid'])
-                        except Exception as e:
-                            logging.debug("cannot delete virtual machine %s" %(str(e)))
+                        vmObj = self.vnc_client.virtual_machine_read(id = vm['uuid'])
+			if not vmObj.get_virtual_machine_interfaces():
+                            vrList = vmObj.get_virtual_router_back_refs()
+                            if vrList:
+                                for vr in vrList:
+                                    vrObj = self.vnc_client.virtual_router_read(id = vr['uuid'])
+                                    vrObj.del_virtual_machine(vmObj)
+                                    self.vnc_client.virtual_router_update(vrObj)
+                            try:
+                                self.vnc_client.virtual_machine_delete(id = vm['uuid'])
+                            except Exception as e:
+                                logging.debug("cannot delete virtual machine %s" %(str(e)))
 
     def join(self, networkId, sandboxKey):
 	ipInstance = self.vnc_client.instance_ip_read(fq_name = [self.epName])
         vn = OpenContrailVN(networkId).VNget()
-	interfaceName = 'veth' + self.epName
+        hostname=socket.gethostname()
+        vr = self.vnc_client.virtual_router_read(fq_name = ["default-global-system-config",hostname])
+	logging.debug("vr: %s" % vr)
+	interfaceName = 'veth' + self.epName +'p0'
         try:
             vmInstance = self.vnc_client.virtual_machine_read(fq_name = [sandboxKey])
         except:
             vmInstance = vnc_api.VirtualMachine(name = sandboxKey)
             self.vnc_client.virtual_machine_create(vmInstance)
+        vmInstance = self.vnc_client.virtual_machine_read(fq_name = [sandboxKey])
+        vr.add_virtual_machine(vmInstance)
+        self.vnc_client.virtual_router_update(vr)
         vmInterface = vnc_api.VirtualMachineInterface(name = interfaceName, parent_obj = self.tenant)
 	vmInterface.set_virtual_machine(vmInstance)
 	vmInterface.set_virtual_network(vn)
@@ -232,8 +246,8 @@ class OpenContrailEndpoint(OpenContrail):
         ipInstance.set_virtual_machine_interface(vmInterface)
 	self.vnc_client.instance_ip_update(ipInstance)
         mac = vmInterface.virtual_machine_interface_mac_addresses.mac_address[0]
-        vrouterInterface = interfaceName + 'p0'
-        return {'mac':mac,'vmInstanceUuid':vmInstance.uuid,'vmInterfaceUuid':vmInterface.uuid,'vrouterInterface':vrouterInterface,'vmInstanceName':vmInstance.name,'vmProjectId':self.tenant.uuid}
+        interfaceName + 'p0'
+        return {'mac':mac,'vmInstanceUuid':vmInstance.uuid,'vmInterfaceUuid':vmInterface.uuid,'vrouterInterface':interfaceName,'vmInstanceName':vmInstance.name,'vmProjectId':self.tenant.uuid}
 
     def vrouterRegister(self, result):
         ContrailVRouterApi().add_port(result['vmInstanceUuid'], result['vmInterfaceUuid'], result['vrouterInterface'], result['mac'], display_name=result['vmInstanceName'],
