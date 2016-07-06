@@ -85,10 +85,10 @@ class OpenContrailVN(OpenContrail):
 
         if v4gateway:
             ipam_subnet = vnc_api.IpamSubnetType(subnet = subnet,
-                default_gateway = v4gateway, enable_dhcp = False)
+                default_gateway = v4gateway, enable_dhcp = True)
         else:
             ipam_subnet = vnc_api.IpamSubnetType(subnet = subnet, 
-                                        dns_server_address = v4DnsServer, enable_dhcp = False)
+                                        dns_server_address = v4DnsServer, enable_dhcp = True)
 
         if v6subnet:
             v6DnsServer = IPNetwork(v6subnet)[-2]
