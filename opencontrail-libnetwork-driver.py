@@ -5,15 +5,17 @@ import sys
 import os
 import json
 import netaddr
+import requests
 import argparse
 import yaml
 import uuid
 import logging
+import datetime
 from netaddr import *
 from pprint import pprint
 from vnc_api import vnc_api
-from contrail_vrouter_api.vrouter_api import ContrailVRouterApi
-from contrail_vrouter_api.gen_py.instance_service import ttypes
+#from contrail_vrouter_api.vrouter_api import ContrailVRouterApi
+#from contrail_vrouter_api.gen_py.instance_service import ttypes
 from pyroute2 import IPDB
 from uhttplib import UnixHTTPConnection
 from BaseHTTPServer import BaseHTTPRequestHandler,HTTPServer
@@ -161,7 +163,6 @@ class OpenContrailVN(OpenContrail):
 class OpenContrailEndpoint(OpenContrail):
     def __init__(self, endpointID):
         super(OpenContrailEndpoint,self).__init__()
-        self._vrouter_client = ContrailVRouterApi(doconnect=True)
         self.epName = endpointID[:8]
         ep = endpointID
         self.epUuid = uuid.UUID("{" + ep[0:8] + "-" + ep[8:12] + "-" + ep[12:16] + "-" + ep[16:20] + "-" + ep[20:32] + "}")
@@ -204,21 +205,15 @@ class OpenContrailEndpoint(OpenContrail):
                             logging.debug("cannot delete instance ip %s" %(str(e)))
                 try:
                     self.vnc_client.virtual_machine_interface_delete(id = vmInterface['uuid'])
-                    vrouterDeRegister(vmInterface['uuid'])
                 except Exception as e:
                     logging.debug("cannot delete virtual machine interface %s" %(str(e)))
+                self.vrouterPortControl({'vmInterfaceUuid':vmInterface['uuid']}, 'del')
                 logging.debug("vmList:")
                 if vmList:
                     logging.debug("%s"%vmList)
                     for vm in vmList:
                         vmObj = self.vnc_client.virtual_machine_read(id = vm['uuid'])
 			if not vmObj.get_virtual_machine_interfaces():
-                            vrList = vmObj.get_virtual_router_back_refs()
-                            if vrList:
-                                for vr in vrList:
-                                    vrObj = self.vnc_client.virtual_router_read(id = vr['uuid'])
-                                    vrObj.del_virtual_machine(vmObj)
-                                    self.vnc_client.virtual_router_update(vrObj)
                             try:
                                 self.vnc_client.virtual_machine_delete(id = vm['uuid'])
                             except Exception as e:
@@ -228,8 +223,6 @@ class OpenContrailEndpoint(OpenContrail):
 	ipInstance = self.vnc_client.instance_ip_read(fq_name = [self.epName])
         vn = OpenContrailVN(networkId).VNget()
         hostname=socket.gethostname()
-        vr = self.vnc_client.virtual_router_read(fq_name = ["default-global-system-config",hostname])
-	logging.debug("vr: %s" % vr)
 	interfaceName = 'veth' + self.epName +'p0'
         try:
             vmInstance = self.vnc_client.virtual_machine_read(fq_name = [sandboxKey])
@@ -237,8 +230,6 @@ class OpenContrailEndpoint(OpenContrail):
             vmInstance = vnc_api.VirtualMachine(name = sandboxKey)
             self.vnc_client.virtual_machine_create(vmInstance)
         vmInstance = self.vnc_client.virtual_machine_read(fq_name = [sandboxKey])
-        vr.add_virtual_machine(vmInstance)
-        self.vnc_client.virtual_router_update(vr)
         vmInterface = vnc_api.VirtualMachineInterface(name = interfaceName, parent_obj = self.tenant)
 	vmInterface.set_virtual_machine(vmInstance)
 	vmInterface.set_virtual_network(vn)
@@ -248,78 +239,52 @@ class OpenContrailEndpoint(OpenContrail):
 	self.vnc_client.instance_ip_update(ipInstance)
         mac = vmInterface.virtual_machine_interface_mac_addresses.mac_address[0]
         interfaceName + 'p0'
-        return {'mac':mac,'vmInstanceUuid':vmInstance.uuid,'vmInterfaceUuid':vmInterface.uuid,'vrouterInterface':interfaceName,'vmInstanceName':vmInstance.name,'vmProjectId':self.tenant.uuid}
-
-    def _uuid_from_string(self, idstr):
-        """ Convert an uuid string into an uuid object """
-        if not idstr:
-            return None
-        return uuid.UUID(idstr)
-
-    def _uuid_to_hex(self, id):
-        """ Convert an uuid into an array of integers """
-        hexstr = id.hex
-        return [int(hexstr[i:i + 2], 16) for i in range(32) if i % 2 == 0]
-
-    def _uuid_string_to_hex(self, idstr):
-        return self._uuid_to_hex(self._uuid_from_string(idstr))
-
-
-    def createPortList(self):
-        portList = {}
-        hostname = socket.gethostname()
-        vrObj = self.vnc_client.virtual_router_read(fq_name = ["default-global-system-config",hostname])
-        vmList = vrObj.get_virtual_machine_refs()
-        if vmList:
-            for vm in vmList:
-                vmObj = self.vnc_client.virtual_machine_read(id = vm['uuid'])
-                vmiList = vmObj.get_virtual_machine_interface_back_refs()
-                if vmiList:
-                    for vmi in vmiList:
-                        vmiObj = self.vnc_client.virtual_machine_interface_read(id = vmi['uuid'])
-                        instIpList = vmiObj.get_instance_ip_back_refs()
-                        if instIpList:
-                            for instIp in instIpList:
-                                instIpObj = self.vnc_client.instance_ip_read(id = instIp['uuid'])
-                                vnList = instIpObj.get_virtual_network_refs()
-                                if vnList:
-                                    for vn in vnList:
-                                        vnObj = self.vnc_client.virtual_network_read(id = vn['uuid'])
-                                        portData = ttypes.Port(
-                                            self._uuid_string_to_hex(vmi['uuid']),
-                                            self._uuid_string_to_hex(vm['uuid']),
-                                            vmiObj.name,
-                                            instIpObj.get_instance_ip_address(),
-                                            self._uuid_string_to_hex(vn['uuid']),
-                                            vmiObj.virtual_machine_interface_mac_addresses.mac_address[0],
-                                            port_type = 0,
-                                        )
-                                        portList[vmi['uuid']] = portData
-        return portList
-
-    def vrouterRegister(self, result):
-	portList = self.createPortList()
-        logging.debug("########### port list: %s ###############\n" % portList)
-        vrouter_api = ContrailVRouterApi()
-        vrouter_api._ports = portList
-        vrouter_api.add_port(result['vmInstanceUuid'], result['vmInterfaceUuid'], result['vrouterInterface'], result['mac'], display_name=result['vmInstanceName'],
-        #ContrailVRouterApi().add_port(result['vmInstanceUuid'], result['vmInterfaceUuid'], result['vrouterInterface'], result['mac'], display_name=result['vmInstanceName'],
-                 vm_project_id=result['vmProjectId'], port_type='NovaVMPort')
-
-    def vrouterDeRegister(self, vmiUuid):
-        portList = self.createPortList()
-        logging.debug("########### port list: %s ###############\n" % portList)
-        vrouter_api = ContrailVRouterApi()
-        vrouter_api._ports = portList
-        ContrailVRouterApi().delete_port(vmiUuid)
-        
+	instIpAddress = ipInstance.get_instance_ip_address()
+        return {'mac':mac,'vmInstanceUuid':vmInstance.uuid,'vmInterfaceUuid':vmInterface.uuid,'vrouterInterface':interfaceName,'vmInstanceName':vmInstance.name,'vmProjectId':self.tenant.uuid,'ipAddress':instIpAddress, 'vnId': vn.uuid}
 
     def create(self, networkId, ipAddress, ipv6Address = None):
         vn = OpenContrailVN(networkId).VNget()
         ip = vnc_api.InstanceIp(name = self.epName, instance_ip_address = ipAddress.split('/')[0])
         ip.set_virtual_network(vn)
         self.vnc_client.instance_ip_create(ip)
-        #mac = vm_interface.virtual_machine_interface_mac_addresses.mac_address[0]
+
+    def vrouterPortControl(self, result, action):
+        PORT_PATH="/var/lib/contrail/ports/"
+        PORT_IPC_VROUTER_AGENT_PORT=9091
+        headers = {'content-type': 'application/json'}
+        filename = ("%s%s" %(PORT_PATH, result['vmInterfaceUuid']))
+        base_url = "http://localhost:" + str(PORT_IPC_VROUTER_AGENT_PORT)
+        if action == 'del':
+            url = base_url + "/port/" + result['vmInterfaceUuid']
+            try:
+                r = requests.delete(url, data=None, headers=headers)
+            except ConnectionError:
+                pass
+            if os.path.isfile(filename):
+                os.remove(filename)    
+        if action == 'add':
+            data = {
+                    "id" : result['vmInterfaceUuid'],
+                    "instance-id" : result['vmInstanceUuid'],
+                    "ip-address" : result['ipAddress'],
+                    "ip6-address" : '',
+                    "vn-id" : result['vnId'],
+                    "display-name": result['vmInstanceName'],
+                    "vm-project-id" : result['vmProjectId'],
+                    "mac-address" : result['mac'],
+                    "system-name" : result['vrouterInterface'],
+                    "type" : 0,
+                    "rx-vlan-id" : 0,
+                    "tx-vlan-id" : 0,
+                    "author" : __file__,
+                    "time" : str(datetime.datetime.now())
+                   }
+            json_dump = json.dumps(data)
+            with open(filename, 'w') as outfile:
+                json.dump(data, outfile, True)
+                outfile.close()
+            url = base_url + "/port"
+            r = requests.post(url, data=json_dump, headers=headers)
 
 class HttpResponse(object):
      def __init__(self, code, contentType, body):
@@ -431,7 +396,7 @@ class RequestResponse(object):
                 veth.up()
             with ip.interfaces[vethIdContainer] as veth:
                 veth.address = mac
-            OpenContrailEndpoint(endpointId).vrouterRegister(result)
+            OpenContrailEndpoint(endpointId).vrouterPortControl(result, 'add')
             joinInfo = {}
             joinInfo['InterfaceName'] = {}
             joinInfo['InterfaceName']['SrcName'] = vethIdContainer
