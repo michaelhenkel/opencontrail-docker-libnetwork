@@ -56,10 +56,17 @@ Input:
   virtual network name
 '''
 class OpenContrailVN(OpenContrail):
-    def __init__(self, vnName):
+    def __init__(self, vnName, displayName = None):
         super(OpenContrailVN,self).__init__()
-        self.vnName = vnName
-        self.obj = vnc_api.VirtualNetwork(name = vnName,
+        if displayName:
+            self.vnName = displayName
+            self.networkId = vnName
+            idPerm = vnc_api.IdPermsType(description=vnName)
+            self.obj = vnc_api.VirtualNetwork(name = displayName,
+                    parent_obj = self.tenant, id_perms = idPerm)
+        else:
+            self.vnName = vnName
+            self.obj = vnc_api.VirtualNetwork(name = vnName,
                     parent_obj = self.tenant)
 
     def VNlist(self):
@@ -67,6 +74,11 @@ class OpenContrailVN(OpenContrail):
         return list
 
     def VNget(self):
+        for item in self.VNlist():
+            if (item['fq_name'][1] == self.tenant.name):
+                vnObj = self.vnc_client.virtual_network_read(id = item['uuid'])
+                if vnObj.get_id_perms().description == self.vnName:
+                    return vnObj
         for item in self.VNlist():
             if (item['fq_name'][1] == self.tenant.name) and \
                     (item['fq_name'][2] == self.vnName):
@@ -91,7 +103,7 @@ class OpenContrailVN(OpenContrail):
         else:
             ipam_subnet = vnc_api.IpamSubnetType(subnet = subnet, 
                                         dns_server_address = v4DnsServer, enable_dhcp = True)
-
+        
         if v6subnet:
             v6DnsServer = IPNetwork(v6subnet)[-2]
             v6cidr = v6subnet.split('/')
@@ -333,14 +345,14 @@ class RequestResponse(object):
             if 'rt' in data['Options']['com.docker.network.generic']:
                 rtList = data['Options']['com.docker.network.generic']['rt'].split(',')
                 if len(data['IPv6Data']) > 0:
-                    openContrailVN = OpenContrailVN(networkId).create(pool, gateway, v6subnet=v6pool, v6gateway = v6gateway, rtList = rtList, displayName = displayName)
+                    openContrailVN = OpenContrailVN(networkId, displayName = displayName).create(pool, gateway, v6subnet=v6pool, v6gateway = v6gateway, rtList = rtList, displayName = displayName)
                 else:
-                    openContrailVN = OpenContrailVN(networkId).create(pool, gateway, rtList = rtList, displayName = displayName)
+                    openContrailVN = OpenContrailVN(networkId, displayName = displayName).create(pool, gateway, rtList = rtList, displayName = displayName)
             else:
                 if len(data['IPv6Data']) > 0:
-                    openContrailVN = OpenContrailVN(networkId).create(pool, gateway, v6subnet=v6pool, v6gateway = v6gateway, displayName = displayName)
+                    openContrailVN = OpenContrailVN(networkId, displayName = displayName).create(pool, gateway, v6subnet=v6pool, v6gateway = v6gateway, displayName = displayName)
                 else:
-                    openContrailVN = OpenContrailVN(networkId).create(pool, gateway, displayName = displayName)
+                    openContrailVN = OpenContrailVN(networkId, displayName = displayName).create(pool, gateway, displayName = displayName)
             networkInfo = {}
             networkInfo['NetworkID'] = data['NetworkID']
             return HttpResponse(200,'json',networkInfo).response
